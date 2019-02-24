@@ -1,0 +1,151 @@
+﻿@section scripts
+{
+    <script src="@Url.Content("~/Scripts/jquery.signalR-2.0.1.min.js")" type="text/javascript"></script>
+    <script src="/signalr/hubs" type="text/javascript"></script>
+    <script src="~/Scripts/linq/native.linq.js"></script>
+
+    <script>
+        $(function () {
+
+            // Proxy created on the fly
+            var call = $.connection.callHub;
+            var tryingToReconnect = false;
+            
+            // Declare a function on the job hub so the server can invoke it
+            call.client.displayStatus = function () {
+                getData();
+            };
+
+            $.connection.hub.connectionSlow(function () {
+                writeLog("Медленное соединение.");
+            });
+
+            $.connection.hub.reconnecting(function () {
+                writeLog("Попытка повторно подключится.");
+                tryingToReconnect = true;
+            });
+
+            $.connection.hub.reconnected(function () {
+                tryingToReconnect = false;
+                writeLog("Попытка повторно подключится 2.");
+            });
+
+            $.connection.hub.disconnected(function () {
+                if (tryingToReconnect) {
+                    writeLog("Попытка восстановить соединение.");
+                }
+            });
+            
+            $.connection.hub.disconnected(function () {
+                setTimeout(function () {
+                    writeLog("Произошло отключение: перезапускаю hub.");
+                    $.connection.hub.start();
+                }, 5000); // Restart connection after 5 seconds.
+            });
+
+            // Start the connection
+            $.connection.hub.start();
+            
+            initialLocalStorage();
+            
+            getData();
+        });
+        
+        function getData() {
+            var $tbl = $('#tblJobInfo');
+            
+            $.ajax({
+                url: '/api/value/GetCalls',
+                type: 'GET',
+                datatype: 'json',
+                success: function (data) {
+                    if (data.length > 0) {
+
+                        var tempData = JSON.parse(localStorage.getItem('tempData'));
+
+                        if (linq(tempData).equal(data))
+                            return;
+
+                        localStorage.setItem('tempData', JSON.stringify(data));
+                        
+                        console.dir(tempData);
+                        console.dir(data);
+                        writeLog("Обновление данных.");
+                        $tbl.empty();
+                        $tbl.append(' <tr>' +
+                            '<th>ID</th>' +
+                            '<th>UID</th>' +
+                            '<th>SubjectTo</th>' +
+                            '<th>SubjectFrom</th>' +
+                            '<th>ActionType</th>' +
+                            '</tr>');
+                        var rows = [];
+                        for (var i = 0; i < data.length; i++) {
+                            rows.push(' <tr>' +
+                                '<td>' + data[i].ID + '</td>' +
+                                '<td>' + data[i].UID + '</td>' +
+                                '<td>' + data[i].SubjectTo + '</td>' +
+                                '<td>' + data[i].SubjectFrom + '</td>' +
+                                '<td>' + data[i].ActionType + '</td>' +
+                                
+                                '</tr>');
+                        }
+                        
+                        $tbl.append(rows.join(''));
+                    }
+                }
+            });
+
+        }
+
+        function convertDate(date, writeInLog) {
+            var d = new Date(date);
+
+            if (writeInLog)
+                console.log(date);
+
+            date = convertNumber(d.getDate()) + "." + convertNumber(d.getMonth() + 1) + "." + convertYear(d.getFullYear());
+
+            var time = convertNumber(d.getHours()) + ":" + convertNumber(d.getMinutes()) + ":" + convertNumber(d.getSeconds());
+
+            return date + " " + time;
+        }
+
+        function convertYear(year) {
+            year += "";
+
+            return year.length < 4 ? "200" + year : year;
+        }
+
+        function convertNumber(number) {
+            return number >= 10 ? "" + number : "0" + number;
+        }
+
+        function writeLog(message) {
+            var date = new Date();
+
+            var d = "[" + convertDate(date.toJSON()) + "]: ";
+            console.log(d + message);
+        }
+        
+        function initialLocalStorage() {
+            var dateNow = new Date();
+            localStorage.setItem('StartDate', dateNow.toJSON());
+            localStorage.setItem('tempData', JSON.stringify([]));
+            
+        }
+        
+    </script>
+}
+
+
+<h2>Calls</h2>
+<div style="float: left;">
+    <table id="tblJobInfo" style="text-align: center; margin-left: 10px">
+    </table>
+</div>
+
+<div style="float: right">
+    <h2>Log</h2>
+    <table id="log"></table>
+</div>
